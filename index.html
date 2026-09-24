@@ -58,14 +58,19 @@ header .sub{margin-top:4px;font-size:12.5px;opacity:.9}
 .opt:hover{border-color:var(--brand);background:#fafafa}
 .opt .lg{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:#f4f4f5;color:#52525b;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
 .opt .tx{flex:1}
-.opt.correct{border-color:var(--green);background:var(--green-bg)}
+.opt.picked{border-color:var(--brand);background:#f0f0f5;transform:scale(1.012)}
+.opt.picked .lg{background:var(--brand);color:#fff}
+.opt.correct{border-color:var(--green);background:var(--green-bg);animation:popIn .35s ease}
 .opt.correct .lg{background:var(--green);color:#fff}
-.opt.wrong{border-color:var(--red);background:var(--red-bg)}
+.opt.wrong{border-color:var(--red);background:var(--red-bg);animation:shakeX .42s ease}
 .opt.wrong .lg{background:var(--red);color:#fff}
 .opt.disabled{cursor:default}
 .opt.disabled:hover{border-color:var(--line);background:#fff}
 .explain{border-radius:10px;padding:12px 14px;margin-top:14px;background:var(--amber-bg);border:1px solid #f0d9a8;display:none}
-.explain.show{display:block}
+.explain.show{display:block;animation:riseIn .32s ease}
+@keyframes popIn{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@keyframes riseIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .explain .a{font-weight:700;color:#7a5600;margin-bottom:6px}
 .explain .t{color:#3a3b45;font-size:14px}
 .explain .kd{margin-top:8px;font-size:12.5px;color:#8a6a1a}
@@ -305,6 +310,7 @@ function answer(q, oi){
 
 /* ===== 渲染 ===== */
 const STATE = { cat:'all', view:'study' };
+let revealTimer = null, revealId = null, revealOi = null;
 
 function tagHTML(q){
   const art = (q.part==='文科');
@@ -321,20 +327,24 @@ function formatStem(s){
   return lines.length>1 ? lines.join('<br>') : s;
 }
 
-function optionsHTML(q, d){
-  const answered = !!d;
+function optionsHTML(q, d, revealing, pickOi){
   let html = '<div class="opts">';
   q.opts.forEach((o,oi)=>{
-    let cls = 'opt' + (answered?' disabled':'');
-    if(answered){ if(q.correct===oi) cls += ' correct'; else if(!d.ok && d.oi===oi) cls += ' wrong'; }
+    let cls = 'opt';
+    if(revealing){
+      cls += ' disabled' + (oi===pickOi ? ' picked' : '');
+    } else if(d){
+      cls += ' disabled';
+      if(q.correct===oi) cls += ' correct'; else if(!d.ok && d.oi===oi) cls += ' wrong';
+    }
     html += '<div class="' + cls + '" data-oi="' + oi + '"><div class="lg">' + (LETTERS[oi]||'?') + '</div><div class="tx">' + o + '</div></div>';
   });
   html += '</div>';
   return html;
 }
 
-function explainHTML(q, d){
-  if(!d) return '<div class="explain"></div>';
+function explainHTML(q, d, revealing){
+  if(!d || revealing) return '<div class="explain"></div>';
   const head = '<div class="a">正确答案：' + (q.ans||'—') + '　' + (d.ok ? '（你答对了）' : '（你答错了）') + '</div>';
   const body = '<div class="t">' + (q.ana||'（无解析）') + '</div>' + (q.kd ? '<div class="kd">' + q.kd + '</div>' : '');
   return '<div class="explain show">' + head + body + '</div>';
@@ -394,7 +404,7 @@ function renderQuestion(app, list){
   const idx = S.group.idx;
   const q = list[idx];
   const d = (S.group.done||{})[q.id];
-  const answered = !!d;
+  const revealing = (revealId === q.id);
   const isLast = (idx === list.length-1);
   const allDone = groupAnsweredAll();
   const c = S.cards[q.id];
@@ -412,8 +422,8 @@ function renderQuestion(app, list){
     '<span class="pos">第 ' + S.group.n + ' 组 · 第 ' + (idx+1) + ' / ' + list.length + ' 题</span><span class="src">' + (q.src||'') + '</span></div>' +
     mat +
     '<div class="stem">' + formatStem(q.stem) + '</div>' +
-    optionsHTML(q, d) +
-    explainHTML(q, d) +
+    optionsHTML(q, d, revealing, revealOi) +
+    explainHTML(q, d, revealing) +
     '<div class="nav" style="margin-top:16px">' +
     '<button class="btn" id="prev">上一题</button>' +
     '<div class="btns">' + nextBtn + '</div>' +
@@ -423,17 +433,26 @@ function renderQuestion(app, list){
     opt.addEventListener('click',()=>{
       const dd = (S.group.done||{})[q.id];
       if(dd) return;
-      answer(q, parseInt(opt.dataset.oi,10));
+      const oi = parseInt(opt.dataset.oi,10);
+      answer(q, oi);
+      revealId = q.id; revealOi = oi;
       render();
-      const ex = document.querySelector('#app .explain.show');
-      if(ex) ex.scrollIntoView({behavior:'smooth', block:'nearest'});
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(()=>{
+        revealId = null; revealOi = null;
+        render();
+        const ex = document.querySelector('#app .explain.show');
+        if(ex) ex.scrollIntoView({behavior:'smooth', block:'nearest'});
+      }, 400);
     });
   });
   app.querySelector('#prev').addEventListener('click',()=>{
+    clearTimeout(revealTimer); revealId = null; revealOi = null;
     S.group.idx--; if(S.group.idx<0) S.group.idx=0; saveS(); render();
   });
   const nx = app.querySelector('#next');
   if(nx) nx.addEventListener('click',()=>{
+    clearTimeout(revealTimer); revealId = null; revealOi = null;
     if(S.group.idx < list.length-1) S.group.idx++; saveS(); render();
   });
   const fin = app.querySelector('#finishgrp');
