@@ -347,7 +347,11 @@ function renderCats(){
   });
   el.innerHTML = html;
   el.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{
-    STATE.cat = ch.dataset.cat; render();
+    if(ch.dataset.cat === STATE.cat) return;
+    STATE.cat = ch.dataset.cat;
+    S.group = { n:0, order:[], idx:0, done:{} };
+    STATE.view = 'study';
+    saveS(); render();
   }));
 }
 
@@ -480,8 +484,13 @@ document.getElementById('wrongbtn').addEventListener('click',()=>{
   render();
 });
 document.getElementById('reset').addEventListener('click',()=>{
-  if(confirm('确定重置全部进度与错题集（题库本身保留）？')){
-    S = { cards:{}, group:{n:0,order:[],idx:0,done:{}}, answered:0, right:0 };
+  if(confirm('确定重置刷题进度（错题集将保留，已答对的题会重新出现）？')){
+    Object.keys(S.cards).forEach(id=>{
+      const c = S.cards[id];
+      if(c.st==='done'){ c.st='new'; c.skip=0; c.phase=null; c.right=0; c.wrong=0; }
+    });
+    S.group = { n:0, order:[], idx:0, done:{} };
+    S.answered = 0; S.right = 0;
     saveS(); STATE.view='study'; render();
   }
 });
